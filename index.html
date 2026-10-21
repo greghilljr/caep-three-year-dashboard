@@ -176,7 +176,7 @@ td .lvl{margin-left:6px;vertical-align:.08em}
 
   <div class="card">
     <h2>Summary statistics</h2>
-    <p class="note">Attainment across the system for the selected metric and plan cycle. A target counts as met when the actual reaches or exceeds it. Rows with no actual reported are excluded from the rate and counted separately.</p>
+    <p class="note">Attainment across the system for the selected metric and plan cycle, with every target scored as entered. A target counts as met when the actual reaches or exceeds it. A count DataVista does not display, presumed under ten, counts as not met against a target of ten or more (marked *); other targets with no actual are excluded from the rate. Each membership counts once, so an agency that belongs to two consortia appears twice.</p>
     <div id="summaryHost"></div>
   </div>
 
@@ -277,22 +277,26 @@ const levelChip = mi => isConsortiumMetric(mi)
   ? '<span class="lvl" title="Targets are set by the consortium as a whole; member agencies do not set this metric.">Consortium-level</span>'
   : '<span class="lvl" title="Targets are set by individual member agencies; the consortium figure is their sum.">Set by agencies</span>';
 
-/* Definition continuity (2022-25 cycle only). The metric a 2022-25 target was
-   set on can differ from the DataVista series it is now scored against: the
-   certified plans printed prior-year values that today's series restates
-   (633AE, 505AE). 624AE (NOVA AE 625 in 2022-25) carries the same definition
-   in both cycles; its cohort values keep accruing later-year awards, so it is
-   flagged Accruing and scored as entered. */
+/* Definition continuity (2022-25 cycle only), from data/report/t3_definition.csv
+   (code/report/01_build_report_tables.R). For each 2022-25 metric, the prior-year
+   values the certified plans printed are compared with today's DataVista values
+   for the same agency and year. "Restated": the series moved after certification
+   (149AE, 411AE, 633AE, 624AE, 505AE in the current extract). The report takes a
+   target rescaled by the agency's own ratio as its primary measure; this page
+   scores the target as entered and badges the metric with the median ratio.
+   "Changed": a different measure; shown, not scored. No metric is Changed in
+   the current extract. 624AE (NOVA AE 625 in 2022-25) is the same metric in
+   both cycles and is classed Restated by a documented override. */
 const DEFN  = D.metrics.defn22 || D.metrics.name.map(()=>"Continuous");
 const RATIO = D.metrics.ratio22 || [];
 const isPlan22 = (plan=state.plan) => D.plans[plan]==="2022-25";
 const defnChanged = (mi, plan=state.plan) => isPlan22(plan) && DEFN[mi]==="Changed";
+const restatedMetrics = () => D.metrics.name.filter((n,mi)=>DEFN[mi]==="Restated");
 function defnChip(mi){
   if(!isPlan22() || DEFN[mi]==="Continuous") return "";
-  if(DEFN[mi]==="Changed") return '<span class="lvl defn changed" title="The 2022-25 plan metric (NOVA AE 625) is a different measure from the DataVista series now on record; certified plans printed values about 1.8x today\u2019s. Shown, not scored.">Definition changed since plan \u00b7 not scored</span>';
-  if(DEFN[mi]==="Accruing"){ const r0=RATIO[mi]; return `<span class="lvl defn" title="This metric counts awards earned in the same or any later year, so each cohort\u2019s value keeps rising. Today\u2019s values run about ${r0?r0.toFixed(2):"?"}x the prior-year values the plan printed. Targets are scored as entered.">Cohort values still accruing${r0?` (\u00d7${r0.toFixed(2)} since plan)`:""}</span>`; }
   const r=RATIO[mi]; const txt=r?` (\u00d7${r.toFixed(2)})`:"";
-  return `<span class="lvl defn" title="DataVista\u2019s values for this metric have moved since the plan was certified: today\u2019s series runs about ${r?r.toFixed(2):"?"}x the prior-year values the plan printed, so the target was set on a different baseline than it is scored against.">DataVista revised since plan${esc(txt)}</span>`;
+  if(DEFN[mi]==="Changed") return `<span class="lvl defn changed" title="The 2022-25 plan metric is a different measure from the DataVista series now on record${r?`; today\u2019s series runs about ${r.toFixed(2)}x the prior-year values the plan printed`:""}. Shown, not scored.">Definition changed since plan \u00b7 not scored</span>`;
+  return `<span class="lvl defn" title="DataVista\u2019s values for this metric have moved since the plan was certified: today\u2019s series runs about ${r?r.toFixed(2):"?"}x (median) the prior-year values the plan printed, so the target was set on a different baseline than it is scored against. This page scores the target as entered; the report rescales it by the agency\u2019s own ratio.">DataVista revised since plan${esc(txt)}</span>`;
 }
 
 /* The pipeline files Participants and Reportable Individuals under a set it
@@ -330,17 +334,23 @@ function activeYears(){
    (each from 1 to 9), so the true total lies between lo and hi. why is the
    reason for a missing value when every cell shares one. */
 function aggregate(locs, mi, yi, plan=state.plan){
-  let t=null,a=null,anyT=false,anyA=false,nSup=0; const reasons=new Set();
+  let t=null,a=null,anyT=false,anyA=false,nSup=0,nLoc=0; const reasons=new Set();
   for(const li of locs){ const c=byKey.get(plan+"|"+li+"|"+mi+"|"+yi)||{t:null,a:null,s:null};
     /* a locale whose targets are counted under another member adds no target when that member is also in the set */
     const u=(D.locales.under||[])[li], dup=u!=null&&locs.includes(u);
     if(c.t!=null&&!dup){t=(t||0)+c.t;anyT=true}
+    if((c.t!=null&&!dup)||c.a!=null||c.s===S_SUPP) nLoc++;
     if(c.a!=null){a=(a||0)+c.a;anyA=true}
     else if(c.t!=null||c.s!=null){ if(c.s===S_SUPP) nSup++; if(c.s!=null&&c.s!==S_SHOWN) reasons.add(c.s); } }
   const count=isCount(mi);
+  /* A percentage (801AE, Median Change in Earnings) cannot be summed across
+     agencies: the total would add percentages, and so would the target. With
+     more than one agency contributing, the aggregate is not applicable; each
+     agency's own figure is shown in the agency table and by selecting it. */
+  if(!count && nLoc>1) return {t:null, a:null, nSup:0, count, lo:0, hi:0, why:null, mixed:false, multiPct:true, hasT:anyT, nLoc};
   const lo=(anyA?a:0)+(count?nSup:0), hi=(anyA?a:0)+(count?9*nSup:0);
   return {t:anyT?t:null, a:anyA?a:null, nSup, count, lo, hi,
-          why: reasons.size===1?[...reasons][0]:null, mixed: reasons.size>1};
+          why: reasons.size===1?[...reasons][0]:null, mixed: reasons.size>1, multiPct:false, hasT:anyT, nLoc};
 }
 function totals(yi){ return aggregate(seriesLocales(), state.met, yi); }
 
@@ -482,6 +492,9 @@ function renderChart(){
   const stacked = state.loc==="ALL" && locs.length>1 && !isConsortiumMetric(state.met);
 
   if(!years.length){ host.innerHTML='<p class="note">No target or actual for this selection.</p>'; return; }
+  if(years.some(yi=>totals(yi).multiPct)){
+    host.innerHTML=`<p class="note">${esc(D.metrics.name[state.met])} is a percentage, so it is not summed across agencies and no consortium figure is shown. Each agency\u2019s target and actual are in the agency table below; select an agency in the Locale menu to chart it.</p>`;
+    document.getElementById("legend").innerHTML=""; return; }
 
   // Stack order fixed by total size so colour follows the entity, not its rank
   // within a single year; capped at 8 with the remainder folded into "Other".
@@ -632,8 +645,8 @@ function renderTableView(){
   } else {
     h+=`<tr><td>Actual</td>`+years.map(yi=>`<td class="num">${fmt(totals(yi).a)}</td>`).join("")+"</tr>";
   }
-  h+=`<tr><td>Target</td>`+years.map(yi=>{const t=totals(yi).t;
-    return `<td class="num">${t==null?'<span class="ns">Not Selected</span>':fmt(t)}</td>`}).join("")+"</tr>";
+  h+=`<tr><td>Target</td>`+years.map(yi=>{const g=totals(yi);
+    return `<td class="num">${g.multiPct?'<span class="ns">not summed</span>':(g.t==null?'<span class="ns">Not Selected</span>':fmt(g.t))}</td>`}).join("")+"</tr>";
   h+=`<tr><td>% of target</td>`+years.map(yi=>{const {t,a}=totals(yi);
     return `<td class="num">${t&&a!=null?pct(a/t):"—"}</td>`}).join("")+"</tr></tbody></table>";
   host.innerHTML=h;
@@ -652,6 +665,7 @@ function band(r, suffix=""){
   return {k:"miss", label:"Missed"+suffix, color:"var(--crit)"};
 }
 function statusOf(t,a,mi=state.met,g=null){
+  if(g&&g.multiPct) return {k:"nd", label:"Not applicable \u00b7 percentages are not summed; select an agency", color:"var(--muted)"};
   if(t==null||t<=0) return {k:"ns", label:"Not Selected", color:"var(--muted)"};
   if(defnChanged(mi)) return {k:"nd", label:"Not scored — definition changed", color:"var(--muted)"};
   const nSup = g ? g.nSup : 0;
@@ -673,11 +687,13 @@ function statusOf(t,a,mi=state.met,g=null){
 }
 /* How an aggregate reads in a table or tile. */
 function showAgg(g){
+  if(g.multiPct) return '<span class="ns" title="A percentage is not summed across agencies">not summed</span>';
   if(g.a!=null) return fmt(g.a)+(g.nSup&&g.count?'<span class="ns" title="'+g.nSup+' suppressed value'+(g.nSup>1?"s":"")+', each from 1 to 9"> +</span>':"");
   if(g.nSup) return '<span class="ns" title="Suppressed by DataVista: a count from 1 to 9">&lt;10</span>';
   return "—";
 }
 function whyText(g){
+  if(g.multiPct) return `${g.nLoc} agencies; a percentage is not summed`;
   if(g.nSup&&g.a!=null) return `reported, plus ${g.nSup} suppressed value${g.nSup>1?"s":""} (each from 1 to 9)`;
   if(g.nSup) return WHY[S_SUPP];
   if(g.a!=null) return "reported";
@@ -690,7 +706,7 @@ const pill = s => `<span class="pill" style="color:${s.color}"><i style="backgro
 function renderTiles(){
   const years=activeYears();
   // Headline on the most recent year that has a target.
-  let yi=null; for(let k=years.length-1;k>=0;k--){ if(totals(years[k]).t!=null){yi=years[k];break} }
+  let yi=null; for(let k=years.length-1;k>=0;k--){ const tt=totals(years[k]); if(tt.t!=null||(tt.multiPct&&tt.hasT)){yi=years[k];break} }
   if(yi==null) yi=years[years.length-1];
   const g=totals(yi); const {t,a}=g; const st=statusOf(t,a,state.met,g);
   const sup = g.nSup>0 && g.count;
@@ -702,10 +718,10 @@ function renderTiles(){
   const pctText = !t ? "—" : (sup ? (g.hi<t ? "at most "+pct(g.hi/t) : (g.lo>=t ? "at least "+pct(g.lo/t) : "—")) : (a!=null?pct(a/t):"—"));
   const el=document.getElementById("tiles");
   el.innerHTML=`
-    <div class="tile"><div class="k">Target ${D.years[yi]}</div><div class="v">${t==null?'<span class="ns">Not Selected</span>':fmt(t)}</div><div class="m">${D.metrics.name[state.met]}</div></div>
-    <div class="tile"><div class="k">Actual ${D.years[yi]}</div><div class="v">${(a==null&&!g.nSup)?'<span class="ns">No data</span>':showAgg(g)}</div><div class="m">${whyText(g)}</div></div>
+    <div class="tile"><div class="k">Target ${D.years[yi]}</div><div class="v">${g.multiPct?'<span class="ns">not summed</span>':(t==null?'<span class="ns">Not Selected</span>':fmt(t))}</div><div class="m">${D.metrics.name[state.met]}</div></div>
+    <div class="tile"><div class="k">Actual ${D.years[yi]}</div><div class="v">${g.multiPct?'<span class="ns">not summed</span>':((a==null&&!g.nSup)?'<span class="ns">No data</span>':showAgg(g))}</div><div class="m">${whyText(g)}</div></div>
     <div class="tile"><div class="k">% of target</div><div class="v">${pctText}</div><div class="m">${pill(st)}</div></div>
-    <div class="tile"><div class="k">Gap</div><div class="v">${gapText}</div><div class="m">${gap==null?(st.k==="nd"?"cannot be determined":(st.k==="ns"?"no target set":"no shortfall")):"additional people needed"}</div></div>`;
+    <div class="tile"><div class="k">Gap</div><div class="v">${gapText}</div><div class="m">${gap==null?(g.multiPct?"not applicable":(st.k==="nd"?"cannot be determined":(st.k==="ns"?"no target set":"no shortfall"))):"additional people needed"}</div></div>`;
 }
 
 /* ---------- metric table ---------- */
@@ -722,14 +738,14 @@ function renderMetricTable(){
     const locs=membersFor(state.cons,mi);
     const g=aggregate(locs,mi,yi); const {t,a}=g;
     return {mi,t,a,g,st:statusOf(t,a,mi,g)};
-  }).filter(r=>r.t!=null||r.a!=null||r.g.nSup>0)
+  }).filter(r=>r.t!=null||r.a!=null||r.g.nSup>0||(r.g.multiPct&&r.g.hasT))
     .sort((x,y2)=>D.metrics.name[x.mi].localeCompare(D.metrics.name[y2.mi]));
   document.getElementById("mtNote").textContent =
     `${D.consortia.name[state.cons]} — ${yi!=null?D.years[yi]:"—"}. Member agencies combined. Consortium-level metrics show the consortium's own figure.`;
   document.getElementById("metricTable").innerHTML =
     `<thead><tr><th>Metric</th><th>Target</th><th>Actual</th><th>% of target</th><th>Gap</th><th>Status</th></tr></thead><tbody>`+
     rows.map(r=>`<tr><td>${esc(D.metrics.name[r.mi])}${isConsortiumMetric(r.mi)?'<span class="lvl">Consortium-level</span>':""}${defnChip(r.mi)}</td>
-      <td class="num">${r.t==null?'<span class="ns">Not Selected</span>':fmt(r.t)}</td>
+      <td class="num">${r.g.multiPct?'<span class="ns">not summed</span>':(r.t==null?'<span class="ns">Not Selected</span>':fmt(r.t))}</td>
       <td class="num">${showAgg(r.g)}</td>
       <td class="num">${!r.t?"—":(r.g.nSup&&r.g.count?(r.g.hi<r.t?"at most "+pct(r.g.hi/r.t):(r.g.lo>=r.t?"at least "+pct(r.g.lo/r.t):"—")):(r.a!=null?pct(r.a/r.t):"—"))}</td>
       <td class="num">${r.t==null?"—":(r.g.nSup&&r.g.count?(r.g.hi<r.t?fmt(r.t-r.g.hi)+" to "+fmt(r.t-r.g.lo):"—"):((r.a!=null&&r.a<r.t)?fmt(r.t-r.a):"—"))}</td>
@@ -754,15 +770,17 @@ function renderAgencyTable(){
 
 /* ---------- summary ---------- */
 function renderSummary(){
-  const groups=[["Statewide",li=>D.locales.type[li]==="Statewide"],
-                ["Consortia",li=>D.locales.type[li]==="Consortium"],
+  /* No statewide row: the extract carries no statewide locale, and the report
+     scores the statewide total as the sum of the targets actually set. */
+  const under=D.locales.under||[];
+  const groups=[["Consortia",li=>D.locales.type[li]==="Consortium"],
                 ["Colleges",li=>D.locales.type[li]==="College"],
                 ["Adult Schools",li=>D.locales.type[li]==="Institution"]];
   const years=D.years.map((_,i)=>i).filter(yi=>{
     for(let i=0;i<N;i++) if(F.p[i]===state.plan&&F.m[i]===state.met&&F.y[i]===yi&&F.t[i]!=null) return true;
     return false;});
   let h=`<table><thead><tr><th>Group</th><th>Agencies with a target</th>`+
-    years.map(yi=>`<th>${D.years[yi]} met</th>`).join("")+`<th>Median % of target</th></tr></thead><tbody>`;
+    years.map(yi=>`<th>${D.years[yi]} met</th>`).join("")+`<th title="Over scored targets in every year shown. A miss inferred from a count DataVista does not display is taken at nine, the highest value it could have.">Median % of target</th></tr></thead><tbody>`;
   const consortiumMetric = isConsortiumMetric(state.met);
   groups.forEach(([label,test])=>{
     // A consortium is only a locale for consortium-level metrics, and colleges /
@@ -776,7 +794,9 @@ function renderSummary(){
            :"a member-level metric, never set at consortium level"}</span></td></tr>`;
       return;
     }
-    const locs=[]; D.locales.type.forEach((_,li)=>{if(test(li))locs.push(li)});
+    /* A locale whose targets are counted under another member (the West Kern
+       JPA) is skipped: its targets are scored on that member's row. */
+    const locs=[]; D.locales.type.forEach((_,li)=>{if(test(li)&&under[li]==null)locs.push(li)});
     const withT=new Set(); let ratios=[];
     const metBy=years.map(()=>({met:0,scored:0,nodata:0}));
     locs.forEach(li=>{
@@ -786,7 +806,8 @@ function renderSummary(){
         if(defnChanged(state.met)){metBy[k].nodata++; return}
         if(c.a==null){
           // suppressed count (1 to 9) against a target of ten or more: not met
-          if(c.s===S_SUPP && isCount(state.met) && c.t>=10){metBy[k].scored++; metBy[k].inferred=(metBy[k].inferred||0)+1}
+          // The report's median takes such a target at nine, the highest value it could have.
+          if(c.s===S_SUPP && isCount(state.met) && c.t>=10){metBy[k].scored++; metBy[k].inferred=(metBy[k].inferred||0)+1; ratios.push(9/c.t)}
           else metBy[k].nodata++;
           return}
         metBy[k].scored++; if(c.a>=c.t) metBy[k].met++;
@@ -817,6 +838,8 @@ function render(){
     ? (isConsortiumMetric(state.met)
         ? `${D.consortia.name[state.cons]} — a consortium-level metric, reported for the consortium as a whole.`
         : `${D.consortia.name[state.cons]} — ${locs.length} member agencies, stacked by contribution. Columns are actuals; the dashed rule is the target.`)
+    : (D.locales.under||[])[Number(state.loc)]!=null
+    ? `${D.locales.name[Number(state.loc)]} — targets were entered under this entity, which has no reporting institution in DataVista. They are scored under ${D.locales.name[(D.locales.under||[])[Number(state.loc)]]}; select it to see outcomes against these targets.`
     : `${D.locales.name[Number(state.loc)]} — columns are actuals; the dashed rule is that agency's target.`;
   if(state.view==="chart"){renderChart();document.getElementById("chartHost").style.display="";
     document.getElementById("tableHost").style.display="none";document.getElementById("legend").style.display="";}
@@ -849,11 +872,11 @@ state.cons = D.consortia.name.findIndex(n=>!/statewide/i.test(n));
 if(state.cons<0) state.cons=0;
 document.getElementById("foot").innerHTML =
   `Targets and NOVA-displayed actuals: NOVA API extraction of all 71 consortia's plans (September 2026). Actuals shown: DataVista Single Metric AEP export (September 2026), matched to each agency at the level its target was set. `+
-  `${D.locales.match.filter(m=>m==="unmatched").length} member agencies that appear here could not be matched to a DataVista record and read “No data”. `+
+  `${D.locales.match.filter((m,li)=>m==="unmatched"&&(D.locales.under||[])[li]==null).length} member agencies that appear here could not be matched to a DataVista record and read “No data”. `+
   (D.locales.under||[]).map((u,li)=>u==null?"":`${D.locales.name[li]} is the entity its consortium operates under and has no reporting institution in DataVista. The targets entered under it are those of ${D.locales.name[u]}, where outcomes are reported, and totals count them once. `).join("")+
-  `<br><b>Values DataVista does not show.</b> DataVista displays zeros and counts of ten or more, and does not display a count from 1 to 9. Where a metric is released for a year and an agency has other values that year, a missing value is treated as suppressed and shown as “&lt;10”. A suppressed value against a target of ten or more is scored as not met. Against a smaller target, or on a percentage metric, it cannot be judged. Totals that include suppressed values are marked “+”, and their shortfall is given as a range. This is an inference: DataVista does not mark suppressed values. `+
+  `<br><b>Values DataVista does not show.</b> DataVista displays zeros and counts of ten or more, and does not display a count from 1 to 9. The export does not say why a cell is missing. After setting aside metric-years not yet released, agencies not matched to DataVista, and agency-years with no values at all, a missing count is assumed to be from 1 to 9 and is shown as “&lt;10”. Under that assumption, a missing count against a target of ten or more is classified as not met; against a smaller target, or on a percentage metric, it cannot be judged. Totals that include such values are marked “+”, and their shortfall is given as a range that rests on the same assumption. The companion report states the assumption (Section 3.4) and also reports attainment on displayed values only. `+
   `<br>2024-25 is partial: DataVista has not released the transition (500/636/637) or employment (505/801) metrics for that year. `+
-  `For some 2022-25 metrics DataVista\u2019s values have moved since the plans were certified (badged “DataVista revised since plan”, with today\u2019s series as a multiple of the plan\u2019s). This page scores every target as entered; the report also shows results with targets adjusted for those revisions. `+
+  `<br><b>Targets are scored as entered.</b> For ${restatedMetrics().length} of the 2022-25 metrics (${restatedMetrics().join("; ")}), DataVista\u2019s values for the prior years the plans displayed have been restated since the plans were certified. They are badged “DataVista revised since plan”, with today\u2019s series as a median multiple of the plan\u2019s. This page compares each target, exactly as entered, with today\u2019s value. The companion report instead takes as its primary measure a target rescaled by the agency\u2019s own ratio of today\u2019s value to the value its plan displayed, where that ratio can be calculated, so its results on those metrics differ from the figures here; its Section 3.5 and Appendix A2 give both conventions. `+
   `<br>${D.meta.rows.toLocaleString()} extract rows · ${D.facts.p.length.toLocaleString()} locale-metric-year cells.`;
 buildPlanSeg(); buildCons(); buildLoc(); buildMetric(); render();
 </script>
