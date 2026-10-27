@@ -281,9 +281,8 @@ const levelChip = mi => isConsortiumMetric(mi)
    (code/report/01_build_report_tables.R). For each 2022-25 metric, the prior-year
    values the certified plans printed are compared with today's DataVista values
    for the same agency and year. "Restated": the series moved after certification
-   (149AE, 411AE, 633AE, 624AE, 505AE in the current extract). The report takes a
-   target rescaled by the agency's own ratio as its primary measure; this page
-   scores the target as entered and badges the metric with the median ratio.
+   (149AE, 411AE, 633AE, 624AE, 505AE in the current extract). This page scores
+   the target as entered and badges the metric with the median ratio.
    "Changed": a different measure; shown, not scored. No metric is Changed in
    the current extract. 624AE (NOVA AE 625 in 2022-25) is the same metric in
    both cycles and is classed Restated by a documented override. */
@@ -296,7 +295,7 @@ function defnChip(mi){
   if(!isPlan22() || DEFN[mi]==="Continuous") return "";
   const r=RATIO[mi]; const txt=r?` (\u00d7${r.toFixed(2)})`:"";
   if(DEFN[mi]==="Changed") return `<span class="lvl defn changed" title="The 2022-25 plan metric is a different measure from the DataVista series now on record${r?`; today\u2019s series runs about ${r.toFixed(2)}x the prior-year values the plan printed`:""}. Shown, not scored.">Definition changed since plan \u00b7 not scored</span>`;
-  return `<span class="lvl defn" title="DataVista\u2019s values for this metric have moved since the plan was certified: today\u2019s series runs about ${r?r.toFixed(2):"?"}x (median) the prior-year values the plan printed, so the target was set on a different baseline than it is scored against. This page scores the target as entered; the report rescales it by the agency\u2019s own ratio.">DataVista revised since plan${esc(txt)}</span>`;
+  return `<span class="lvl defn" title="DataVista\u2019s values for this metric have moved since the plan was certified: today\u2019s series runs about ${r?r.toFixed(2):"?"}x (median) the prior-year values the plan printed, so the target was set on a different baseline than it is scored against. This page scores the target as entered.">DataVista revised since plan${esc(txt)}</span>`;
 }
 
 /* The pipeline files Participants and Reportable Individuals under a set it
@@ -653,7 +652,7 @@ function renderTableView(){
 }
 
 /* ---------- status ---------- */
-/* Scoring rule, the same one the report uses.
+/* Scoring rule.
    A value DataVista shows is scored against the target, whatever its size.
    A suppressed value is a count from 1 to 9: with a target of ten or more the
    target was not met; with a smaller target, or on a percentage metric, the
@@ -770,8 +769,7 @@ function renderAgencyTable(){
 
 /* ---------- summary ---------- */
 function renderSummary(){
-  /* No statewide row: the extract carries no statewide locale, and the report
-     scores the statewide total as the sum of the targets actually set. */
+  /* No statewide row: the extract carries no statewide locale. */
   const under=D.locales.under||[];
   const groups=[["Consortia",li=>D.locales.type[li]==="Consortium"],
                 ["Colleges",li=>D.locales.type[li]==="College"],
@@ -806,7 +804,7 @@ function renderSummary(){
         if(defnChanged(state.met)){metBy[k].nodata++; return}
         if(c.a==null){
           // suppressed count (1 to 9) against a target of ten or more: not met
-          // The report's median takes such a target at nine, the highest value it could have.
+          // The median takes such a target at nine, the highest value it could have.
           if(c.s===S_SUPP && isCount(state.met) && c.t>=10){metBy[k].scored++; metBy[k].inferred=(metBy[k].inferred||0)+1; ratios.push(9/c.t)}
           else metBy[k].nodata++;
           return}
@@ -874,9 +872,9 @@ document.getElementById("foot").innerHTML =
   `Targets and NOVA-displayed actuals: NOVA API extraction of all 71 consortia's plans (September 2026). Actuals shown: DataVista Single Metric AEP export (September 2026), matched to each agency at the level its target was set. `+
   `${D.locales.match.filter((m,li)=>m==="unmatched"&&(D.locales.under||[])[li]==null).length} member agencies that appear here could not be matched to a DataVista record and read “No data”. `+
   (D.locales.under||[]).map((u,li)=>u==null?"":`${D.locales.name[li]} is the entity its consortium operates under and has no reporting institution in DataVista. The targets entered under it are those of ${D.locales.name[u]}, where outcomes are reported, and totals count them once. `).join("")+
-  `<br><b>Values DataVista does not show.</b> DataVista displays zeros and counts of ten or more, and does not display a count from 1 to 9. The export does not say why a cell is missing. After setting aside metric-years not yet released, agencies not matched to DataVista, and agency-years with no values at all, a missing count is assumed to be from 1 to 9 and is shown as “&lt;10”. Under that assumption, a missing count against a target of ten or more is classified as not met; against a smaller target, or on a percentage metric, it cannot be judged. Totals that include such values are marked “+”, and their shortfall is given as a range that rests on the same assumption. The companion report states the assumption (Section 3.4) and also reports attainment on displayed values only. `+
+  `<br><b>Values DataVista does not show.</b> DataVista displays zeros and counts of ten or more, and does not display a count from 1 to 9. The export does not say why a cell is missing. After setting aside metric-years not yet released, agencies not matched to DataVista, and agency-years with no values at all, a missing count is assumed to be from 1 to 9 and is shown as “&lt;10”. Under that assumption, a missing count against a target of ten or more is classified as not met; against a smaller target, or on a percentage metric, it cannot be judged. Totals that include such values are marked “+”, and their shortfall is given as a range that rests on the same assumption. `+
   `<br>2024-25 is partial: DataVista has not released the transition (500/636/637) or employment (505/801) metrics for that year. `+
-  `<br><b>Targets are scored as entered.</b> For ${restatedMetrics().length} of the 2022-25 metrics (${restatedMetrics().join("; ")}), DataVista\u2019s values for the prior years the plans displayed have been restated since the plans were certified. They are badged “DataVista revised since plan”, with today\u2019s series as a median multiple of the plan\u2019s. This page compares each target, exactly as entered, with today\u2019s value. The companion report instead takes as its primary measure a target rescaled by the agency\u2019s own ratio of today\u2019s value to the value its plan displayed, where that ratio can be calculated, so its results on those metrics differ from the figures here; its Section 3.5 and Appendix A2 give both conventions. `+
+  `<br><b>Targets are scored as entered.</b> For ${restatedMetrics().length} of the 2022-25 metrics (${restatedMetrics().join("; ")}), DataVista\u2019s values for the prior years the plans displayed have been restated since the plans were certified. They are badged “DataVista revised since plan”, with today\u2019s series as a median multiple of the plan\u2019s. This page compares each target, exactly as entered, with today\u2019s value. `+
   `<br>${D.meta.rows.toLocaleString()} extract rows · ${D.facts.p.length.toLocaleString()} locale-metric-year cells.`;
 buildPlanSeg(); buildCons(); buildLoc(); buildMetric(); render();
 </script>
