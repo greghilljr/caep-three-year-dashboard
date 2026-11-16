@@ -1005,7 +1005,7 @@ function render(){
     document.getElementById("tableHost").style.display="";document.getElementById("legend").style.display="none";}
   renderTiles(); renderMetricTable(); renderAgencyTable(); renderSummary();
   document.getElementById("subtitle").textContent =
-    `${D.plans[state.plan]} plan cycle · ${D.consortia.name.filter(n=>!/statewide/i.test(n)).length} consortia · ${D.metrics.name.length} metrics · last updated ${new Date(D.meta.built).toLocaleDateString("en-US",{month:"long",year:"numeric",timeZone:"UTC"})}`;
+    `${D.plans[state.plan]} plan cycle · ${D.consortia.name.filter((n,i)=>!/statewide/i.test(n)&&consortiumSetAny(i)).length} consortia · ${planMetrics[state.plan].size} metrics · last updated ${new Date(D.meta.built).toLocaleDateString("en-US",{month:"long",year:"numeric",timeZone:"UTC"})}`;
 }
 
 /* ---------- boot ---------- */
