@@ -184,7 +184,7 @@ td .lvl{margin-left:6px;vertical-align:.08em}
 
   <div class="card">
     <h2>Statewide summary statistics</h2>
-    <p class="note">Attainment across the system for the selected metric and plan cycle, with every target scored as entered. A target counts as met when the actual reaches or exceeds it. A count DataVista does not display, presumed under ten, counts as not met against a target of ten or more (marked *); other targets with no actual are excluded from the rate. Each membership counts once, so an agency that belongs to two consortia appears twice.</p>
+    <p class="note"><span id="sumMetric"></span> — attainment across the state for the selected plan cycle, with every target scored as entered. A target counts as met when the actual reaches or exceeds it. A count DataVista does not display, presumed under ten, counts as not met against a target of ten or more (marked *); other targets with no actual are excluded from the rate. Each membership counts once, so an agency that belongs to two consortia appears twice.</p>
     <div id="summaryHost"></div>
   </div>
 
@@ -917,6 +917,7 @@ function renderAgencyTable(){
 
 /* ---------- summary ---------- */
 function renderSummary(){
+  document.getElementById("sumMetric").textContent = D.metrics.name[state.met];
   /* No statewide row: the extract carries no statewide locale. */
   const under=D.locales.under||[];
   const groups=[["Consortia",li=>D.locales.type[li]==="Consortium"],
