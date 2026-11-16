@@ -96,6 +96,7 @@ tr.grp td{text-align:left;font:600 11px/1.4 system-ui,-apple-system,"Segoe UI",s
 .neg{color:var(--crit);font-weight:600}
 .pos{color:var(--ink2)}
 .lvl.defn.click{cursor:pointer}
+.lvl.defn.inert{opacity:.5;border-style:dashed}
 .lvl.defn.click:hover{background:color-mix(in srgb,var(--warn) 22%,transparent)}
 .lvl.defn.click:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .lvl.defn.click[aria-pressed="true"]{background:var(--warn);color:#111315;border-color:var(--warn)}
@@ -256,7 +257,7 @@ for (let i=0;i<N;i++) planMetrics[F.p[i]].add(F.m[i]);
 const firstTY = D.plans.map(()=>Infinity);
 for (let i=0;i<N;i++) if(F.t[i]!=null && F.y[i]<firstTY[F.p[i]]) firstTY[F.p[i]]=F.y[i];
 const isBaseYear = (yi, plan=state.plan) => yi < firstTY[plan];
-const differs = (n,a) => n!=null && a!=null && Math.abs(n-a) > 0.02*Math.max(Math.abs(n),Math.abs(a),1e-9);
+const differs = (n,a) => n!=null && a!=null && n!==a;
 /* metrics whose original plan values are showing. One set drives the pill
    in the chart title and the pill on each row of the consortium table. */
 const shownMets = new Set();
@@ -266,6 +267,11 @@ function diffCount(locs, mi){
   baseYears().forEach(yi=>locs.forEach(li=>{const c=byKey.get(state.plan+"|"+li+"|"+mi+"|"+yi);
     if(c && c.n!=null && (c.a==null||differs(c.n,c.a))) n++; }));
   return n;
+}
+/* A badge with nothing to switch is dimmed and says why on hover. */
+function inertPill(b){
+  b.classList.add("inert");
+  b.title = "Not clickable here: for this selection the plan form displayed no value that differs from DataVista today. " + b.title;
 }
 function wirePill(b, mi, pressed){
   b.classList.add("click"); b.setAttribute("role","button"); b.tabIndex=0;
@@ -868,7 +874,7 @@ function renderMetricTable(){
         return rs.length ? `<tr class="grp"><td colspan="6">${lab}</td></tr>`+rs.map(rowHtml).join("") : ""; }).join(""); })()+"</tbody>";
   document.querySelectorAll("#metricTable tr[data-mi]").forEach(tr=>{
     const mi=Number(tr.dataset.mi), b=tr.querySelector(".lvl.defn:not(.changed)");
-    if(b && diffCount(membersFor(state.cons,mi),mi)>0) wirePill(b, mi, shownMets.has(mi));
+    if(b){ diffCount(membersFor(state.cons,mi),mi)>0 ? wirePill(b, mi, shownMets.has(mi)) : inertPill(b); }
   });
 }
 
@@ -880,7 +886,7 @@ function renderAgencyTable(){
   const note=document.getElementById("agNote");
   note.innerHTML = `${esc(D.metrics.name[mi])}${defnChip(mi)} — actual / target by year, with the difference from target in parentheses, member agencies only. The consortium row is deliberately absent: for member-level metrics the consortium never set a target, so it is not a locale.`;
   const b=note.querySelector(".lvl.defn:not(.changed)");
-  if(b && diffCount(locs,mi)>0) wirePill(b, mi, on);
+  if(b){ diffCount(locs,mi)>0 ? wirePill(b, mi, on) : inertPill(b); }
   if(!locs.length){ document.getElementById("agencyTable").innerHTML =
     `<tbody><tr><td class="ns">This is a consortium-level metric — no per-agency breakdown exists.</td></tr></tbody>`; return; }
   const diffHtml=(a,t)=>{ const d=Math.round(a)-Math.round(t);
@@ -991,7 +997,7 @@ function render(){
       if(c.n!=null){ nShown++; if(c.a==null||differs(c.n,c.a)) nDiff++; }}));
     const b=document.querySelector("#chartTitle .lvl.defn:not(.changed)");
     state.shown = !!b && nDiff>0 && shownMets.has(state.met);
-    if(b && nDiff){ b.id="shownBtn"; wirePill(b, state.met, state.shown); }
+    if(b){ if(nDiff){ b.id="shownBtn"; wirePill(b, state.met, state.shown); } else inertPill(b); }
   }
   if(state.view==="chart"){renderChart();document.getElementById("chartHost").style.display="";
     document.getElementById("tableHost").style.display="none";document.getElementById("legend").style.display="";}
